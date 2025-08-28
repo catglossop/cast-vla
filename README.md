@@ -21,6 +21,8 @@ bash ssh_pod.sh <name of pod>
 
 Note that on initialization of a new pod or tpu vm, you will need to login to hugging face (to be fixed). To do this, ssh into the single vm or pod,
 ```bash
+gcloud compute tpus tpu-vm ssh <name-of-tpu-vm> --zone=<your-region>
+source ~/cast-vla/.venv/bin/activate
 huggingface-cli login
 ```
 and input your token. 

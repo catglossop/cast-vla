@@ -1,23 +1,24 @@
 #!/bin/bash
 # Activate ssh key 
+SSH_KEY_NAME=$1
 mkdir -p /home/$USER/.ssh
-mv id_ed25519 /home/$USER/.ssh
+mv $SSH_KEY_NAME /home/$USER/.ssh
 eval "$(ssh-agent -s)"
-ssh-add id_ed25519
+ssh-add $SSH_KEY_NAME
 touch /home/$USER/.ssh/known_hosts
 ssh-keyscan github.com >> /home/$USER/.ssh/known_hosts
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.local/bin/env
-git clone https://github.com/catglossop/bigvision-palivla.git --recursive
-cd ~/bigvision-palivla
+git clone https://github.com/catglossop/cast-vla.git --recursive
+cd ~/cast-vla
 git pull
 git submodule sync --recursive
-cd ~/bigvision-palivla/octo
+cd ~/cast-vla/octo
 git fetch 
 git checkout origin/main
 git branch main -f 
 git checkout main
-cd ~/bigvision-palivla
+cd ~/cast-vla
 source .venv/bin/activate
 uv python pin 3.11.12
 uv venv --python=python3.11.12
