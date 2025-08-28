@@ -38,7 +38,7 @@ This is a framework for training multimodal vision-language-action (VLA) model f
 ## Installation
 We develop with `uv`, but other environment managers should work fine. To install the dependencies, run:
 ```bash
-uv venv
+uv venv --python=3.11.12
 uv sync
 ```
 
