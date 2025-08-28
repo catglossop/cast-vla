@@ -29,6 +29,9 @@ dependencies = [
 	"tfds-nightly>=4.9.0",
 	"transformers>=4.54.0",
 	"wandb>=0.21.0",
+	"ngrok",
+	"flask>=3.1.2",
+	"pyngrok>=7.3.0",
 ]
 
 [project.optional-dependencies]
