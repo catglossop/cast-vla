@@ -38,6 +38,7 @@ def load_paligemma_weights(
             },
         }
     )
+    print(path)
     if path is None:
         base_params = {}
     else:
@@ -124,7 +125,7 @@ def load_paligemma_weights(
         out_shardings=model.sharding.model_sharding_rule,
         donate_argnums=(0,),
     )
-
+    print(base_params)
     model.train_state = model.train_state.replace(
         params=replace_params_fn(model.train_state.params, base_params)
     )
