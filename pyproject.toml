@@ -8,7 +8,7 @@ dependencies = [
 	"big-vision",
 	"chex>=0.1.90",
 	"distrax>=0.1.5",
-	"dlimp@git+https://github.com/kvablack/dlimp.git",
+	"dlimp@git+https://github.com/catglossop/dlimp.git",
 	"einops>=0.8.1",
 	"flax>=0.9.0",
 	"huggingface-hub>=0.34.1",
