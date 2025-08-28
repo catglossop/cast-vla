@@ -125,7 +125,8 @@ def load_paligemma_weights(
         out_shardings=model.sharding.model_sharding_rule,
         donate_argnums=(0,),
     )
-    print(base_params)
+    print(type(model.train_state.params))
+    print(type(base_params))
     model.train_state = model.train_state.replace(
         params=replace_params_fn(model.train_state.params, base_params)
     )
