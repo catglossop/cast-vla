@@ -51,7 +51,7 @@ conflicts = [
 ]
 
 [tool.uv.sources]
-dlimp = { git = "https://github.com/kvablack/dlimp.git" }
+dlimp = { git = "https://github.com/catglossop/dlimp.git" }
 big-vision = { workspace = true }
 octo = { path = "octo", editable = true }
 
