@@ -4,7 +4,7 @@ SSH_KEY_NAME=$1
 mkdir -p /home/$USER/.ssh
 mv $SSH_KEY_NAME /home/$USER/.ssh
 eval "$(ssh-agent -s)"
-ssh-add $SSH_KEY_NAME
+ssh-add ~/.ssh/$SSH_KEY_NAME
 touch /home/$USER/.ssh/known_hosts
 ssh-keyscan github.com >> /home/$USER/.ssh/known_hosts
 curl -LsSf https://astral.sh/uv/install.sh | sh

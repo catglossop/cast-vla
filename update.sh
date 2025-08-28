@@ -1,8 +1,8 @@
 #! /bin/bash
 
 # If updating repo, pull 
-cd ~/bigvision-palivla
+cd ~/cast-vla
 git pull
 
-cd ~/bigvision-palivla/octo
+cd ~/cast-vla/octo
 git pull
