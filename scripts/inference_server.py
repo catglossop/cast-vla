@@ -9,7 +9,7 @@ sys.path.append(".")
 import numpy as np
 from flask import Flask, request, jsonify
 from flask_ngrok import run_with_ngrok
-import ngrok
+import pyngrok import ngrok
 import base64
 from io import BytesIO
 from PIL import Image
@@ -59,7 +59,7 @@ def gen_action():
         sharding_metadata = make_sharding(config)
 
         print("\nLoading model...", flags.FLAGS.checkpoint_dir)
-        model = ModelComponents.load_static(f"gs://{flags.FLAGS.checkpoint_dir}", sharding_metadata, weights_only=True)
+        model = ModelComponents.load_static(flags.FLAGS.checkpoint_dir, sharding_metadata, weights_only=True)
         manager = ocp.CheckpointManager(flags.FLAGS.checkpoint_dir, options=ocp.CheckpointManagerOptions())
         model.load_state(flags.FLAGS.checkpoint_step, manager, weights_only=True)
         print("\nModel loaded!")

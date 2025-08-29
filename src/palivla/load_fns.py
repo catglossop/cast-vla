@@ -38,6 +38,7 @@ def load_paligemma_weights(
             },
         }
     )
+
     if path is None:
         base_params = {}
     else:
@@ -120,7 +121,7 @@ def load_paligemma_weights(
 
     replace_params_fn = model.sharding.mesh.sjit(
         _replace_params,
-        in_shardings=(model.sharding.model_sharding_rule, None),
+        in_shardings=(model.sharding.model_sharding_rule, jax.sharding.PartitionSpec()),
         out_shardings=model.sharding.model_sharding_rule,
         donate_argnums=(0,),
     )

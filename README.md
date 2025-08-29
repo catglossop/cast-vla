@@ -16,8 +16,6 @@ uv sync
 source .venv/bin/activate
 ```
 
-
-
 To launch on a single tpu vm (v4-8)
 ```bash
 bash run_tpu.sh <name of tpu> <initialize (true for first job on new tpu)> <update (true if code is changed)> <wandb api key> <config-name>
@@ -37,9 +35,12 @@ bash ssh_pod.sh <name of pod>
 
 Note that on initialization of a new pod or tpu vm, you will need to login to hugging face (to be fixed). To do this, ssh into the single vm or pod,
 ```bash
+gcloud compute tpus tpu-vm ssh <name-of-tpu-vm> --zone=<your-region>
+source ~/cast-vla/.venv/bin/activate
 huggingface-cli login
 ```
 and input your token. 
+
 
 To run inference, 
 ```bash
@@ -47,6 +48,7 @@ export CUDA_VISIBLE_DEVICES=0
 cd cast-vla
 python scripts/inference_server.py --platform <gpu or tpu> --checkpoint_dir <your/path/to/checkpoint> --checkpoint_step <0> --prompt <the prompt to the model>
 ```
+NOTE: Please make sure you have installed `jax[cuda]==0.4.34` if you'd like to use a GPU for inference. Note that the model will use about 18 GB of memory and experiments were performed with a single GPU. 
 
 For example,
 ```bash
