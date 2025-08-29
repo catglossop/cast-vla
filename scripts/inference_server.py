@@ -9,7 +9,7 @@ sys.path.append(".")
 import numpy as np
 from flask import Flask, request, jsonify
 from flask_ngrok import run_with_ngrok
-import ngrok
+import pyngrok import ngrok
 import base64
 from io import BytesIO
 from PIL import Image
