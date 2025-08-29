@@ -32,6 +32,10 @@ dependencies = [
 	"ngrok",
 	"flask>=3.1.2",
 	"pyngrok>=7.3.0",
+	"flask-ngrok>=0.0.25",
+	"opencv-python>=4.11.0.86",
+	"google-cloud-logging>=3.12.1",
+	"google-cloud-storage>=3.3.0",
 ]
 
 [project.optional-dependencies]
