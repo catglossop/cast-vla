@@ -9,6 +9,7 @@ dependencies = [
 	"chex>=0.1.90",
 	"distrax>=0.1.5",
 	"dlimp@git+https://github.com/catglossop/dlimp.git",
+	"diffusion-policy",
 	"einops>=0.8.1",
 	"flax>=0.9.0",
 	"huggingface-hub>=0.34.1",
@@ -36,6 +37,14 @@ dependencies = [
 	"opencv-python>=4.11.0.86",
 	"google-cloud-logging>=3.12.1",
 	"google-cloud-storage>=3.3.0",
+	"tyro>=1.0.10",
+	"smart-open>=7.5.1",
+	"google-cloud-aiplatform>=1.142.0",
+	"google-genai>=1.68.0",
+	"torch>=2.11.0",
+	"torchvision>=0.26.0",
+	"efficientnet-pytorch>=0.7.1",
+	"clip>=0.2.0",
 ]
 
 [project.optional-dependencies]
@@ -61,6 +70,7 @@ conflicts = [
 dlimp = { git = "https://github.com/catglossop/dlimp.git" }
 big-vision = { workspace = true }
 octo = { path = "octo", editable = true }
+diffusion-policy = { path = "../cast/diffusion_policy", editable = true }
 
 [build-system]
 requires = ["hatchling"]
