@@ -61,14 +61,14 @@ class SequenceBuilder:
             for instruction in batch["task"]["language_instruction"]
         ]
 
-        prompt_tokens = language_tokenizer.batch_encode_plus(prompt)["input_ids"]
+        prompt_tokens = language_tokenizer(prompt)["input_ids"]
 
         if include_action_tokens:
             action_tokens = [
                 boa_gen + self.prepare_gen(t)
                 for t in action_tokenizer.tokenize(batch["action"][..., -1, :, :])
             ]
-            action_tokens = language_tokenizer.batch_encode_plus(action_tokens)[
+            action_tokens = language_tokenizer(action_tokens)[
                 "input_ids"
             ]
         else:
@@ -203,8 +203,8 @@ class SequenceBuilder:
                     for action in actions
                 ]
             )
-        except:
-            breakpoint()
+        except Exception as e:
+            actions = np.zeros((len(actions), action_horizon, action_dim))
         actions_mask = einops.repeat(
             actions_mask, "b -> b p a", p=action_horizon, a=action_dim
         ) & ~np.isnan(actions)
