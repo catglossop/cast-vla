@@ -17,18 +17,19 @@ from palivla.palivla_typing import Data
 
 
 def make_train_step_fn(sharding: ShardingMetadata, **kwargs):
+    _rep = PartitionSpec()
     return sharding.mesh.sjit(
         partial(train_step, **kwargs),
         in_shardings=(
             sharding.model_sharding_rule,
             PartitionSpec("fsdp"),
-            None,
+            _rep,
         ),
-        out_shardings=(sharding.model_sharding_rule, None, None),
+        out_shardings=(sharding.model_sharding_rule, _rep, _rep),
         args_sharding_constraint=(
             sharding.model_sharding_rule,
             PartitionSpec("fsdp"),
-            None,
+            _rep,
         ),
         donate_argnums=(0,),
     )
@@ -47,18 +48,19 @@ def make_eval_step_fn(sharding: ShardingMetadata, **kwargs):
         )
         return info, key
 
+    _rep = PartitionSpec()
     return sharding.mesh.sjit(
         eval_step,
         in_shardings=(
             sharding.model_sharding_rule,
             PartitionSpec("fsdp"),
-            None,
+            _rep,
         ),
-        out_shardings=(None, None),
+        out_shardings=(_rep, _rep),
         args_sharding_constraint=(
             sharding.model_sharding_rule,
             PartitionSpec("fsdp"),
-            None,
+            _rep,
         ),
     )
 

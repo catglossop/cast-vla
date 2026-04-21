@@ -156,7 +156,7 @@ class TrainState(FlaxTrainState):
         # Shard the abstract train state
         if isinstance(sharding.model_sharding_rule, ShardingRule):
             shardings = sharding.model_sharding_rule.apply(abstract_train_state)
-            shardings = jax.tree_map(
+            shardings = jax.tree.map(
                 lambda x: jax.sharding.NamedSharding(sharding.mesh.mesh, x), 
                 shardings,
             )

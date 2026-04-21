@@ -43,8 +43,11 @@ def make_base_dataset(
         traj_read_threads=traj_read_threads,
         **kwargs,
     )
+    dataset_statistics = getattr(dataset, "dataset_statistics", None)
     dataset = dataset.filter(lambda x: tf.reduce_any(x["observation"]["image_primary"] != 255))
-    dataset = dataset.filter(lambda x: tf.reduce_all(x["action"][:,3:,:] != 0.0))
+    dataset = dataset.filter(lambda x: tf.reduce_all(x["action"][:, 3:, :] != 0.0))
+    if dataset_statistics is not None:
+        dataset.dataset_statistics = dataset_statistics
 
     return dataset
 
