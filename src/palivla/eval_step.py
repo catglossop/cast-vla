@@ -104,9 +104,9 @@ def compute_eval_stats(
     )
 
     metrics = compute_stats(
-        pred_logits=logits,
-        tokens=batch.tokens,
-        mask_loss=batch.tokens_loss,
+        pred_logits=logits[..., :-1, :],
+        target_tokens=batch.tokens[..., 1:],
+        target_mask_loss=batch.tokens_loss[..., 1:],
     )[1]
 
     metrics = {prefix + k: v for k, v in metrics.items()}

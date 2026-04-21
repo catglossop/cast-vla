@@ -17,18 +17,25 @@ from palivla.components.sequence_builder import SequenceBuilder
 from palivla.components.train_state import ShardingMetadata, TrainState
 from palivla.spec import ModuleSpec, OptimizerSpec
 from palivla.train_step import step_fn
-from palivla.utils import read_staging_directory, write_staging_directory
+from palivla.utils import (
+    jax_shapedtypestruct_unpickle_compat,
+    read_staging_directory,
+    write_staging_directory,
+)
 
 
 def make_step_fn(sharding: ShardingMetadata):
+    # Use PartitionSpec() (replicated), not None: scalax pairs shardings with args
+    # via tree_map; None becomes the "rule" and triggers NamedSharding(mesh, None).
+    _rep = PartitionSpec()
     return sharding.mesh.sjit(
         partial(step_fn, train=True),
-        in_shardings=(sharding.model_sharding_rule, PartitionSpec("fsdp"), None),
-        out_shardings=(sharding.model_sharding_rule, None, None),
+        in_shardings=(sharding.model_sharding_rule, PartitionSpec("fsdp"), _rep),
+        out_shardings=(sharding.model_sharding_rule, _rep, _rep),
         args_sharding_constraint=(
             sharding.model_sharding_rule,
             PartitionSpec("fsdp"),
-            None,
+            _rep,
         ),
         donate_argnums=(0,),
     )
@@ -144,7 +151,8 @@ class ModelComponents:
         sequence_builder = SequenceBuilder.load(path)
 
         with io.gfile.GFile(io.gfile.join(path, "example_batch.pkl"), "rb") as f:
-            example_batch = cloudpickle.load(f)
+            with jax_shapedtypestruct_unpickle_compat():
+                example_batch = cloudpickle.load(f)
         with io.gfile.GFile(io.gfile.join(path, "rng.pkl"), "rb") as f:
             rng = cloudpickle.load(f)
         

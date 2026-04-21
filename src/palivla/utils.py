@@ -52,6 +52,37 @@ def host_broadcast_str(x: str | None) -> str:
     return decoded.rstrip()
 
 
+@contextmanager
+def jax_shapedtypestruct_unpickle_compat():
+    """Allow ``cloudpickle.load`` of old checkpoints that set ``ShapeDtypeStruct.sharding``.
+
+    In recent JAX, ``sharding`` is a read-only property; pickles from older JAX still assign
+    it during unpickling and raise ``AttributeError``. We ignore that assignment; layout is
+    re-derived in :func:`palivla.components.train_state.TrainState.load_static`.
+    """
+    sds_cls = getattr(jax, "ShapeDtypeStruct", None)
+    if sds_cls is None or not isinstance(sds_cls, type):
+        yield
+        return
+
+    orig_setattr = sds_cls.__setattr__
+
+    def _compat_setattr(self, name, value):
+        if name == "sharding":
+            try:
+                orig_setattr(self, name, value)
+            except AttributeError:
+                return
+        else:
+            orig_setattr(self, name, value)
+
+    sds_cls.__setattr__ = _compat_setattr
+    try:
+        yield
+    finally:
+        sds_cls.__setattr__ = orig_setattr
+
+
 def gcs_recursive_copy(src: str, dst: str):
     from tensorflow import io as io
 

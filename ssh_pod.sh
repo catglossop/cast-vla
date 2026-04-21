@@ -19,9 +19,14 @@ if [ -f "$CACHE_FILE" ]; then
     fi
 fi
 
-# Use default values if not found in cache
-ZONE="us-central2-b"
-N_WORKERS=$2
+# Second arg overrides worker count; default zone only if unset (e.g. from cache or export).
+N_WORKERS="${2:-${N_WORKERS:-}}"
+: "${ZONE:=us-central2-b}"
+
+if [ -z "$N_WORKERS" ]; then
+    echo "Usage: $0 <pod_name> <num_workers>"
+    exit 1
+fi
 
 echo "Connecting to $TPU_VM_NAME with $N_WORKERS workers in zone $ZONE..."
 
@@ -33,6 +38,7 @@ for i in $(seq 0 $(($N_WORKERS - 1))); do
 
     tmux new-window -t tpc_${TPU_VM_NAME}:$i -k
     INNER_TMUX_COMMAND="tmux a -t tpc"
-    tmux send-keys -t tpc_${TPU_VM_NAME} "gcloud compute tpus tpu-vm ssh --zone $ZONE $TPU_VM_NAME --worker=$i -- -t $INNER_TMUX_COMMAND" Enter
+    # Use alpha subcommand so this matches launch_tpu_job_pod.sh / run_tpu_pod.sh on multi-worker pods.
+    tmux send-keys -t tpc_${TPU_VM_NAME} "gcloud alpha compute tpus tpu-vm ssh --zone $ZONE $TPU_VM_NAME --worker=$i -- -t $INNER_TMUX_COMMAND" Enter
 done
 tmux a -t tpc_${TPU_VM_NAME} || tmux switch -t tpc_${TPU_VM_NAME}

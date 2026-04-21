@@ -1,3 +1,4 @@
+import json
 import os
 import matplotlib.pyplot as plt
 import datetime, time
@@ -48,6 +49,25 @@ def make_sharding(config: ConfigDict):
         ),
     )
     return sharding_metadata
+
+
+def _dataset_statistics_to_jsonable(obj):
+    """Recursively convert dataset_statistics (numpy / tf) for JSON dump."""
+    import tensorflow as _tf
+
+    if isinstance(obj, dict):
+        return {k: _dataset_statistics_to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_dataset_statistics_to_jsonable(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.floating, np.integer)):
+        return float(obj) if isinstance(obj, np.floating) else int(obj)
+    if isinstance(obj, (float, int, str, bool)) or obj is None:
+        return obj
+    if _tf.is_tensor(obj):
+        return obj.numpy().tolist()
+    raise TypeError(f"Cannot serialize type {type(obj)} for dataset statistics: {obj!r}")
 
 
 def create_model(config: ConfigDict, sharding_metadata: ShardingMetadata):
@@ -120,7 +140,27 @@ def create_model(config: ConfigDict, sharding_metadata: ShardingMetadata):
 
 def main(_):
     if flags.FLAGS.platform == "tpu":
-        jax.distributed.initialize()
+        # Single-host TPU VM: no env needed. TPU pod: launch_tpu_job_pod.sh sets these so all
+        # workers join the same JAX process group (otherwise PJRT/TPU init often fails).
+        coord = os.environ.get("CAST_JAX_COORDINATOR_ADDRESS")
+        nproc = os.environ.get("CAST_JAX_NUM_PROCESSES")
+        pid = os.environ.get("CAST_JAX_PROCESS_ID")
+        if coord and nproc is not None and pid is not None:
+            pid_i = int(pid)
+            nproc_i = int(nproc)
+            init_kwargs = {
+                "coordinator_address": coord,
+                "num_processes": nproc_i,
+                "process_id": pid_i,
+            }
+            # Process 0 hosts the coordinator; bind all interfaces so other pod workers can connect.
+            if pid_i == 0 and ":" in coord:
+                init_kwargs["coordinator_bind_address"] = (
+                    f"0.0.0.0:{coord.rsplit(':', 1)[-1]}"
+                )
+            jax.distributed.initialize(**init_kwargs)
+        else:
+            jax.distributed.initialize()
 
     # Turn off debug logs
     tf.get_logger().setLevel("WARNING")
@@ -129,6 +169,27 @@ def main(_):
     tf.random.set_seed(jax.process_index())
 
     config = flags.FLAGS.config
+
+    if flags.FLAGS.stats_only:
+        if jax.process_index() != 0:
+            return
+        out_name = flags.FLAGS.stats_config_name or config.get("wandb_run") or "default"
+        out_path = tf.io.gfile.join(flags.FLAGS.statistics_gs_prefix, out_name, "statistics.json")
+        print(f"stats_only: building dataset and writing statistics to {out_path}", flush=True)
+        train_ds = make_base_dataset(**config.dataset_kwargs.to_dict(), train=True)
+        stats = getattr(train_ds, "dataset_statistics", None)
+        if stats is None:
+            raise RuntimeError(
+                "train_ds.dataset_statistics is missing; ensure palivla.dataset.make_base_dataset preserves it."
+            )
+        parent = os.path.dirname(out_path)
+        if not tf.io.gfile.exists(parent):
+            tf.io.gfile.makedirs(parent)
+        payload = _dataset_statistics_to_jsonable(stats)
+        with tf.io.gfile.GFile(out_path, "w") as f:
+            json.dump(payload, f, indent=2)
+        print(f"Wrote dataset statistics for: {list(stats.keys())}", flush=True)
+        return
 
     sharding_metadata = make_sharding(config)
 
@@ -154,6 +215,7 @@ def main(_):
         
     # Construct the final dataset
     # We need to do this after the model is constructed, since we need to have a tokenizer
+    print("Jax process count: ", jax.process_count())
     per_host_train_batch_size = config.batch_size // jax.process_count()
 
     def make_training_batch(batch):
@@ -213,6 +275,7 @@ def main(_):
         for i in pbar:
             if not config.overfit_dataset:
                 batch = next(train_it)
+
             info = model.train_step(batch)
             info = jax.device_get(info)
             wandb_logs.append(info)
@@ -290,4 +353,21 @@ if __name__ == "__main__":
         "config", "configs/smoke_test.py", "Path to the config file."
     )
     flags.DEFINE_string("platform", "gpu", "Platform to run on.")
+    flags.DEFINE_bool(
+        "stats_only",
+        False,
+        "If True, build the training dataset to compute dataset_statistics, write JSON to "
+        "gs://.../statistics/<name>/statistics.json (see --statistics_gs_prefix and --stats_config_name), and exit.",
+    )
+    flags.DEFINE_string(
+        "statistics_gs_prefix",
+        "gs://cat-datasets/statistics",
+        "GCS prefix for stats_only output; file is <prefix>/<config_name>/statistics.json.",
+    )
+    flags.DEFINE_string(
+        "stats_config_name",
+        None,
+        "Subdirectory name under statistics_gs_prefix for the stats JSON. "
+        "Default: config wandb_run, or 'default' if unset.",
+    )
     app.run(main)

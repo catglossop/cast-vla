@@ -45,6 +45,9 @@ dependencies = [
 	"torchvision>=0.26.0",
 	"efficientnet-pytorch>=0.7.1",
 	"clip>=0.2.0",
+	"fastapi>=0.136.0",
+	"uvicorn>=0.44.0",
+	"flags>=0.0.1.2",
 ]
 
 [project.optional-dependencies]
