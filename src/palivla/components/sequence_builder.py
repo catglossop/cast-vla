@@ -44,6 +44,15 @@ class SequenceBuilder:
     def prepare_gen(self, action_tokens):
         return "".join([f"<act{i}>" for i in action_tokens]) + "<eos>"
 
+    def _batch_pad(self, token_lists, pad_length, pad_value=0):
+        """Pad a list of variable-length 1-D arrays into a single (B, pad_length) array."""
+        batch_size = len(token_lists)
+        out = np.full((batch_size, pad_length), pad_value, dtype=np.int32)
+        for i, tok in enumerate(token_lists):
+            length = min(len(tok), pad_length)
+            out[i, :length] = tok[:length]
+        return out
+
     def build_sequence(
         self,
         batch,
@@ -74,50 +83,28 @@ class SequenceBuilder:
         else:
             action_tokens = [[] for _ in range(len(prompt_tokens))]
 
-        def _pad(data, pad_length, pad_value=0):
-            num_pad_tokens = max(0, pad_length - len(data))
-            return np.pad(
-                data, (0, num_pad_tokens), mode="constant", constant_values=pad_value
-            )[:pad_length]
-
         batch_size = len(prompt_tokens)
+        lengths_prompt = np.array([min(len(t), self.prompt_pad_length) for t in prompt_tokens])
+        lengths_gen = np.array([min(len(t), self.gen_pad_length) for t in action_tokens])
+
+        prompt_tok_arr = self._batch_pad(prompt_tokens, self.prompt_pad_length)
+        gen_tok_arr = self._batch_pad(action_tokens, self.gen_pad_length)
+
+        prompt_mask = np.arange(self.prompt_pad_length)[None, :] < lengths_prompt[:, None]
+        gen_mask = np.arange(self.gen_pad_length)[None, :] < lengths_gen[:, None]
 
         return {
             "prompt": {
-                "tokens": np.stack(
-                    [_pad(tok, self.prompt_pad_length) for tok in prompt_tokens]
-                ),
-                "mask": np.stack(
-                    [
-                        _pad(np.ones_like(tok, dtype=bool), self.prompt_pad_length)
-                        for tok in prompt_tokens
-                    ]
-                ),
-                "mask_ar": np.stack(
-                    [
-                        _pad(np.equal(tok, boa_id), self.prompt_pad_length)
-                        for tok in prompt_tokens
-                    ]
-                ),
+                "tokens": prompt_tok_arr,
+                "mask": prompt_mask,
+                "mask_ar": prompt_tok_arr == boa_id,
                 "mask_loss": np.zeros((batch_size, self.prompt_pad_length), dtype=bool),
             },
             "gen": {
-                "tokens": np.stack(
-                    [_pad(tok, self.gen_pad_length) for tok in action_tokens]
-                ),
-                "mask": np.stack(
-                    [
-                        _pad(np.ones_like(tok, dtype=bool), self.gen_pad_length)
-                        for tok in action_tokens
-                    ]
-                ),
+                "tokens": gen_tok_arr,
+                "mask": gen_mask,
                 "mask_ar": np.ones((batch_size, self.gen_pad_length), dtype=bool),
-                "mask_loss": np.stack(
-                    [
-                        _pad(np.ones(len(tok), dtype=bool), self.gen_pad_length)
-                        for tok in action_tokens
-                    ]
-                ),
+                "mask_loss": gen_mask,
             },
         }
 

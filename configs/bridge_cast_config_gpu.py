@@ -8,7 +8,7 @@ def get_config(variant_config: str = "default"):
     
     num_train_steps = FieldReference(200000, int)
 
-    config["data_dir"] = "gs://cat-datasets"
+    config["data_dir"] = "/raid/datasets/openx"
     data_mix = "bridge_cast"
     config["batch_size"] = 512
     config["eval_batch_size"] = 128
@@ -28,8 +28,8 @@ def get_config(variant_config: str = "default"):
     config["visualization_datasets"]["bridge"]["data_dir"] = config["data_dir"]
     config["wandb_run"] = "bridge_cast"
     
-    config["resume_checkpoint_dir"] = "gs://cat-logs/bridge_cast_2026_04_14_21_09_03"
-    config["resume_checkpoint_step"] = 135000
+    # config["resume_checkpoint_dir"] = "gs://cat-logs/bridge_cast_2026_04_14_21_09_03"
+    # config["resume_checkpoint_step"] = 135000
 
     config["optimizer"]["kwargs"]["base_learning_rate"] = 1e-4
     config["optimizer"]["kwargs"]["optimizer"] = "adamw"

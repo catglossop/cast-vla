@@ -3,6 +3,8 @@ import os
 import matplotlib.pyplot as plt
 import datetime, time
 import shutil
+import threading
+import queue
 
 from big_vision.utils import Registry
 from palivla.components.action_tokenizer import ActionTokenizer, DCTActionTokenizer
@@ -34,6 +36,31 @@ from palivla.optimizer import make_optimizer
 from palivla.spec import ModuleSpec, OptimizerSpec
 from palivla.utils import host_broadcast_str
 
+
+def _prefetch_iterator(base_iterator, buffer_size=2):
+    """Wraps an iterator to prefetch elements in a background thread."""
+    buf = queue.Queue(maxsize=buffer_size)
+    sentinel = object()
+
+    def _fill():
+        try:
+            for item in base_iterator:
+                buf.put(item)
+        except Exception as e:
+            buf.put(e)
+        buf.put(sentinel)
+
+    thread = threading.Thread(target=_fill, daemon=True)
+    thread.start()
+
+    while True:
+        item = buf.get()
+        if item is sentinel:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+
 jax.config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
@@ -41,7 +68,14 @@ tf.config.set_visible_devices([], "GPU")
 
 
 def make_sharding(config: ConfigDict):
-    mesh = MeshShardingHelper([-1], ["fsdp"])
+    data_axis_size = config.get("data_axis_size", 1)
+    fsdp_axis_size = config.get("fsdp_axis_size", -1)
+    if data_axis_size == 1:
+        mesh = MeshShardingHelper([fsdp_axis_size], ["fsdp"])
+    else:
+        mesh = MeshShardingHelper(
+            [data_axis_size, fsdp_axis_size], ["batch", "fsdp"]
+        )
     sharding_metadata = ShardingMetadata(
         mesh=mesh,
         model_sharding_rule=FSDPShardingRule(
@@ -139,28 +173,24 @@ def create_model(config: ConfigDict, sharding_metadata: ShardingMetadata):
 
 
 def main(_):
-    if flags.FLAGS.platform == "tpu":
-        # Single-host TPU VM: no env needed. TPU pod: launch_tpu_job_pod.sh sets these so all
-        # workers join the same JAX process group (otherwise PJRT/TPU init often fails).
-        coord = os.environ.get("CAST_JAX_COORDINATOR_ADDRESS")
-        nproc = os.environ.get("CAST_JAX_NUM_PROCESSES")
-        pid = os.environ.get("CAST_JAX_PROCESS_ID")
-        if coord and nproc is not None and pid is not None:
-            pid_i = int(pid)
-            nproc_i = int(nproc)
-            init_kwargs = {
-                "coordinator_address": coord,
-                "num_processes": nproc_i,
-                "process_id": pid_i,
-            }
-            # Process 0 hosts the coordinator; bind all interfaces so other pod workers can connect.
-            if pid_i == 0 and ":" in coord:
-                init_kwargs["coordinator_bind_address"] = (
-                    f"0.0.0.0:{coord.rsplit(':', 1)[-1]}"
-                )
-            jax.distributed.initialize(**init_kwargs)
-        else:
-            jax.distributed.initialize()
+    coord = os.environ.get("CAST_JAX_COORDINATOR_ADDRESS")
+    nproc = os.environ.get("CAST_JAX_NUM_PROCESSES")
+    pid = os.environ.get("CAST_JAX_PROCESS_ID")
+    if coord and nproc is not None and pid is not None:
+        pid_i = int(pid)
+        nproc_i = int(nproc)
+        init_kwargs = {
+            "coordinator_address": coord,
+            "num_processes": nproc_i,
+            "process_id": pid_i,
+        }
+        if pid_i == 0 and ":" in coord:
+            init_kwargs["coordinator_bind_address"] = (
+                f"0.0.0.0:{coord.rsplit(':', 1)[-1]}"
+            )
+        jax.distributed.initialize(**init_kwargs)
+    elif flags.FLAGS.platform == "tpu":
+        jax.distributed.initialize()
 
     # Turn off debug logs
     tf.get_logger().setLevel("WARNING")
@@ -221,9 +251,12 @@ def main(_):
     def make_training_batch(batch):
         return batch
 
-    train_it = map(
-        make_training_batch,
-        train_ds.batch(per_host_train_batch_size).iterator(),
+    train_it = _prefetch_iterator(
+        map(
+            make_training_batch,
+            train_ds.batch(per_host_train_batch_size).iterator(),
+        ),
+        buffer_size=2,
     )
 
     # W&B setup
@@ -269,6 +302,8 @@ def main(_):
                 shutil.rmtree("images")
             os.makedirs("images", exist_ok=True)
 
+    last_loss = float("nan")
+
     with tqdm.trange(
         start_step, config.num_steps, desc="Training", dynamic_ncols=True
     ) as pbar:
@@ -277,20 +312,29 @@ def main(_):
                 batch = next(train_it)
 
             info = model.train_step(batch)
-            info = jax.device_get(info)
-            wandb_logs.append(info)
-            pbar.set_postfix(
-                loss=f"{info['loss']:.4f}",
-            )
-            
-            if (i + 1) % config.eval_interval == 0:
 
-                # Get eval info
+            # Defer device_get: only materialize metrics when we need them for
+            # logging, eval, or checkpointing. This lets the next iteration's
+            # data loading and CPU tokenization overlap with GPU computation.
+            need_log = (i + 1) % config.log_interval == 0
+            need_eval = (i + 1) % config.eval_interval == 0
+            need_save = (i + 1) % config.save_interval == 0
+
+            if need_log or need_eval or need_save:
+                info = jax.device_get(info)
+                last_loss = float(info["loss"])
+
+            wandb_logs.append(info)
+            pbar.set_postfix(loss=f"{last_loss:.4f}")
+
+            if need_eval:
                 eval_data = model.eval_step(batch)
                 eval_info = eval_data["eval_info"]
                 eval_plots = eval_data["eval_data"]
 
-                # Select random subset of the batch to visualize
+                if jax.process_index() == 0:
+                    wandb.log(eval_info, step=i + 1, commit=False)
+
                 if config.visualize:
                     if jax.process_index() == 0:
                         print("Visualizing evaluation results...")
@@ -298,7 +342,6 @@ def main(_):
                         wandb_list = []
                         idxs = np.random.choice(np.arange(eval_plots["pred_actions"].shape[0]//jax.process_count()), 5)
                         
-                        # Get the ground truth and predicted actions
                         gt_viz = eval_plots["gt_actions"][idxs, ...]
                         gt_viz = np.cumsum(gt_viz, axis=1)
                         gt_viz = gt_viz - gt_viz[:, 0, :].reshape(-1, 1, model.action_tokenizer.action_dim)
@@ -327,12 +370,12 @@ def main(_):
                             plt.close()
                             
                             wandb.log({"action_prediction": wandb_list}, commit=False)
-                            wandb.log(eval_info, step=i + 1, commit=False)
                             with open("batch.pkl", "wb") as f:
                                 pkl.dump(batch, f)
                             wandb.save("batch.pkl")
 
-            if (i + 1) % config.log_interval == 0:
+            if need_log:
+                wandb_logs = [jax.device_get(x) if not isinstance(x.get("loss"), (float, np.floating)) else x for x in wandb_logs]
                 avg_info = jax.tree.map(
                     lambda *xs: np.mean(np.stack(xs), axis=0), *wandb_logs
                 )
@@ -340,7 +383,7 @@ def main(_):
                     wandb.log(avg_info, step=i + 1)
                 wandb_logs = []
 
-            if (i + 1) % config.save_interval == 0:
+            if need_save:
                 if config.save_path is not None:
                     model.save_state(i + 1, checkpoint_save_manager)
 

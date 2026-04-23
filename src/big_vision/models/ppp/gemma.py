@@ -160,18 +160,20 @@ class Einsum(nn.Module):
   @nn.compact
   def __call__(self, eqn, x):
     w = self.param("w", self.w_init, self.shape)
-    return jnp.einsum(eqn, x, w)
+    return jnp.einsum(eqn, x, w.astype(x.dtype))
 
 
 class RMSNorm(nn.Module):
 
   @nn.compact
   def __call__(self, x):
+    orig_dtype = x.dtype
     scale = self.param("scale", nn.initializers.zeros_init(), (x.shape[-1]))
+    x = x.astype(jnp.float32)
     var = jnp.mean(jnp.square(x), axis=-1, keepdims=True)
-    normed_inputs = jnp.asarray(x * jnp.reciprocal(jnp.sqrt(var + 1e-06)))
-    normed_inputs = normed_inputs * (1 + scale)
-    return normed_inputs
+    normed_inputs = x * jnp.reciprocal(jnp.sqrt(var + 1e-06))
+    normed_inputs = normed_inputs * (1 + scale.astype(jnp.float32))
+    return normed_inputs.astype(orig_dtype)
 
 
 class Embedder(nn.Module):
@@ -284,6 +286,7 @@ class FeedForward(nn.Module):
         trunc_norm_init(in_axis=(1,), out_axis=(0, 2), batch_axis=()),
         ((2, self.features, self.hidden_dim)),
     )
+    w_gating = w_gating.astype(x.dtype)
     ff_gate = jnp.dot(x, w_gating[0])
     gate_value = nn.gelu(ff_gate)
 
@@ -295,7 +298,7 @@ class FeedForward(nn.Module):
         trunc_norm_init(in_axis=(0,), out_axis=(1,), batch_axis=()),
         (self.hidden_dim, self.features),
     )
-    outputs = jnp.dot(activations, w_linear)
+    outputs = jnp.dot(activations, w_linear.astype(x.dtype))
 
     return outputs
 

@@ -14,6 +14,7 @@ import numpy as np
 
 from palivla.components.action_tokenizer import ActionTokenizer
 from palivla.components.sequence_builder import SequenceBuilder
+from palivla.components.visualization import run_eval_functions
 from palivla.components.train_state import ShardingMetadata, TrainState
 from palivla.spec import ModuleSpec, OptimizerSpec
 from palivla.train_step import step_fn
@@ -241,7 +242,11 @@ class ModelComponents:
         # Compare the two predicted actions 
         diff_l2 = (gen_l2_random - gen_l2) / gen_l2_random
         diff_l1 = (gen_l1_random - gen_l1) / gen_l1_random
-        diff_acc = (gen_acc - gen_acc_random) / gen_acc_random 
+        diff_acc = (gen_acc - gen_acc_random) / gen_acc_random
+
+        eval_metrics = run_eval_functions(
+            predicted_actions, gt_actions, actions_mask, tokens
+        )
         
         return {"eval_info":{
             "gen_valid_pct": gen_valid_pct,
@@ -255,6 +260,7 @@ class ModelComponents:
             "diff_l2": diff_l2,
             "diff_l1": diff_l1,
             "diff_acc": diff_acc,
+            **eval_metrics,
             },
             "eval_data":{
             "pred_actions": predicted_actions,
@@ -288,8 +294,8 @@ class ModelComponents:
             "prompt": sequences["prompt"],
             "gen": sequences["gen"],
         }
-        
-        # Run the train step
+        inputs = self.sharding.mesh.local_data_to_global_array(inputs)
+
         with self.sharding.mesh.mesh, nn.logical_axis_rules([("act_batch", "fsdp")]):
             from palivla.predict_fns import _decode
             params = self.train_state.get_params(use_ema_params=use_ema_params)
