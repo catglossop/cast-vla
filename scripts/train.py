@@ -1,5 +1,24 @@
 import json
 import os
+import site
+
+
+def _prepend_nvidia_cuda_nvcc_bin_to_path() -> None:
+    """Prefer pip's ptxas over /usr/bin so XLA PTX matches the CUDA bundled with jaxlib."""
+    candidates = []
+    u = site.getusersitepackages()
+    if u:
+        candidates.append(u)
+    candidates.extend(site.getsitepackages())
+    for sp in candidates:
+        bin_dir = os.path.join(sp, "nvidia", "cuda_nvcc", "bin")
+        if os.path.isfile(os.path.join(bin_dir, "ptxas")):
+            os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+            break
+
+
+_prepend_nvidia_cuda_nvcc_bin_to_path()
+
 import matplotlib.pyplot as plt
 import datetime, time
 import shutil
