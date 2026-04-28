@@ -305,23 +305,40 @@ class PolicyServer:
         else:
             sampler = "greedy"
             temperature = None
-            
-        predicted_actions, actions_mask, tokens = self.model.predict(batch, action_dim=7, action_horizon=action_horizon, return_tokens=True, include_action_tokens=False, sampler=sampler, temperature=temperature)
         
-        total_time = time.time() - start_time
-        print(f"Total time: {total_time}s")
         
-        if len(predicted_actions.shape) > 1: 
-            while len(predicted_actions.shape) > 1:
-                predicted_actions = predicted_actions.squeeze(0)
-        assert predicted_actions.shape == (7,)
-        out = np.asarray(predicted_actions)
-        if self.action_stats is not None:
-            out = unnormalize_actions(
-                out, self.action_stats, normalization_type=self._action_norm
+        while True:
+            predicted_actions, actions_mask, tokens = self.model.predict(
+                batch,
+                action_dim=7,
+                action_horizon=action_horizon,
+                return_tokens=True,
+                include_action_tokens=False,
+                sampler=sampler,
+                temperature=temperature
             )
+
+            total_time = time.time() - start_time
+            print(f"Total time: {total_time}s")
+
+            if len(predicted_actions.shape) > 1:
+                while len(predicted_actions.shape) > 1:
+                    predicted_actions = predicted_actions.squeeze(0)
+            assert predicted_actions.shape == (7,)
+            out = np.asarray(predicted_actions)
+            if self.action_stats is not None:
+                out = unnormalize_actions(
+                    out, self.action_stats, normalization_type=self._action_norm
+                )
+
+            if not np.isnan(out).any():
+                break
+            else:
+                print("NaNs detected in action output, regenerating...")
+
         print(f"Action: {out.tolist()}")
         return {"action": out.tolist()}
+   
 
     def run(self, host: str = "0.0.0.0", port: int = 5000) -> None:
         self.app = FastAPI()
